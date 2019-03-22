@@ -4,27 +4,27 @@ package encryption;
  * 
  * 
  * ToDo:
- * add padding to state if the string is less than mod 16
- * break up the state into 4x4 chunks if it is bigger than 16bytes
  * check if 24 and 32 byte keysizes work
  * move the tables to new class for cleaner code
- * convert the encrypted text to base 64
- * change public stuff to private
  * have a get final message method (convert state to string to return it)
+ * Allow for bigger than 16 byte states
  * 
  * 
  * 
  * @author Michael
  */
 public class AES {
-    public int[][] state;
-    public boolean encrypt; //false if decrypting
-    public int rounds = 10;
-    public int[][] exKey = new int[44][4]; //extended key
-    public int[][] toBe = new int[4][4]; //message in a 2D array
-    public int[][] output = new int[4][4];
-    public int[][] roundKeyF = new int[44][4];
+    private int[][] state;
+    private boolean encrypt; //false if decrypting
+    private int rounds;
+    private int[][] exKey; //extended key
+    private int[][] toBe = new int[4][4]; 
+    private int[][] roundKeyF;
     private int keySize;
+    private String encrptedStr; //Will be reomved
+    private String encrptedAndBase64;
+    private String decrptedAndBase64; //Will be reomved
+    private String decrptedStr;
    
     
     public int[][] sbox = {{0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76}, 
@@ -203,171 +203,203 @@ public class AES {
             rounds = 12;
         if(keySize == 32)
             rounds = 14;
+        
+        roundKeyF = new int[4][rounds * 4 + 4]; //44, 52, 60  (rounds * 4 + 4)
+        exKey = new int[4][rounds * 4 + 4];
         roundKeyF = keyExpand(key);
-            for(int i = 0; i < roundKeyF.length; i++){
-                for(int j =0; j < roundKeyF[i].length; j++){
-                    exKey[i][j] = roundKeyF[i][j];
-                }
-            }
-            
-        int[][] texthex = new int[inputStr.length()/4][4];
-        int count = 0;
-        for(int i = 0; i < inputStr.length()/4; i++){
-            for(int j =0; j < 4; j++){
-                char temp = inputStr.charAt(count);
-                texthex[j][i] = temp; 
-                count++;
+        for(int i = 0; i < roundKeyF[0].length; i++){
+            for(int j =0; j < roundKeyF.length; j++){
+                exKey[j][i] = roundKeyF[j][i];
             }
         }
-        state = texthex;
-        for(int k = 0; k < toBe.length; k++){
-            for(int j =0; j < toBe[k].length; j++){
-                toBe[k][j]=state[k][j];
-            }
-        }
-        
-        if(crpyt)
-            encryption();
-        else
-            decryption();
-        
-        for(int k = 0; k < toBe.length; k++){
-            for(int z =0; z < toBe[k].length; z++){
-                output[z][k]=toBe[k][z];
-            }
-        }
-        
+
+        Base64 b64 = new Base64();
         if(crpyt){
-            System.out.println(convert2DAryToString(output));
-            StringBuilder sb = new StringBuilder();
-            for(int k = 0; k < output.length; k++){
-                for(int z =0; z < output[k].length; z++){
-                    char temp;
-                    temp=(char)output[k][z];
-                    sb.append(temp);
-                }
-            }
-            System.out.println(sb.toString());
+            //adds padding
+            inputStr = addPadding(inputStr); 
+            System.out.println(inputStr);
+
+            //converts text to an array of ascii
+            state = textToAsciiArray(inputStr);
+            
+            encryption();
+            
+            encrptedStr = convertStateToString(); //Will be reomved
+            System.out.println("encrptminusBase64: "+encrptedStr);  //Will be reomved
+            encrptedAndBase64 = b64.encodeBase64Arry(covert2DAryTo1DAry(state));
+            System.out.println("encrptplusBase64: "+encrptedAndBase64); //Will be reomved
+            
+            /*For Testing Remove what is below*/
+            encrypt = false;
+            state = null;
+            
+            state = covert1DAryTo2DAry(b64.decodeBase64Arry(encrptedAndBase64));
+            decrptedAndBase64 = convertStateToString();
+            System.out.println("decrptminusBase64: "+decrptedAndBase64);
+            decryption();
+            decrptedStr = convertStateToString();
+            System.out.println(decrptedStr);
+            /*Remove what is above*/
         }else{
-            StringBuilder sb = new StringBuilder();
-            for(int k = 0; k < output.length; k++){
-                for(int z =0; z < output[k].length; z++){
-                    char temp;
-                    temp=(char)output[k][z];
-                    sb.append(temp);
-                }
-            }
-            System.out.println(sb.toString());
+            state = covert1DAryTo2DAry(b64.decodeBase64Arry(inputStr));
+            decrptedAndBase64 = convertStateToString(); //Will be reomved
+            System.out.println("decrptminusBase64: "+decrptedAndBase64);  //Will be reomved
+            decryption();
+            decrptedStr = convertStateToString();
+            System.out.println(decrptedStr); //Will be reomved
         }
+        
     }
     
 
     private void encryption(){
-        
-        //Intial Rounds
-        addRoundKey(exKey, 0);
+        //loops through the potions (4x4 sections) of the state
+        System.out.println("Before Encrpytion"); //Will be reomved
+        System.out.println(convert2DAryToString(state)); //Will be reomved
+        for(int j = 0; j < state[0].length / 4; j++){
+            //copy a portion of the state to toBe
+            for(int k = 0; k < toBe[0].length; k++){
+                for(int p =0; p < toBe.length; p++){
+                    toBe[p][k]=state[p][k +(j*4)];
+                }
+            }
+            
+            //Intial Rounds
+            addRoundKey(exKey, 0);
 
-        //main Rounds
-        for(int i = 1; i < rounds; i++){
+            //main Rounds
+            for(int i = 1; i < rounds; i++){
+                subBytes(encrypt);
+                shiftRows(encrypt);
+                mixColumns(encrypt);
+                addRoundKey(exKey, i);
+            }
+
+            //Final Rounds
             subBytes(encrypt);
             shiftRows(encrypt);
-            mixColumns(encrypt);
-            addRoundKey(exKey, i);
+            addRoundKey(exKey, rounds);
+            
+            //puts the encrypted toBe back into state
+            for(int k = 0; k < toBe[0].length; k++){
+                for(int p =0; p < toBe.length; p++){
+                    state[p][k+(j*4)]=toBe[p][k];
+                }
+            }
         }
-        
-        //Final Rounds
-        subBytes(encrypt);
-        shiftRows(encrypt);
-        addRoundKey(exKey, rounds);
+        System.out.println("After Encrpytion"); //Will be reomved
+        System.out.println(convert2DAryToString(state)); //Will be reomved
     }
     
     private void decryption(){
-        //Intial Rounds
-        addRoundKey(exKey, rounds);
+        System.out.println("Before Decrpytion"); //Will be reomved
+        System.out.println(convert2DAryToString(state)); //Will be reomved
+        //loop that loops state.length / 4 times
+        for(int j = 0; j < state[0].length / 4; j++){
+            //copy a portion of the state to toBe
+            for(int k = 0; k < toBe[0].length; k++){
+                for(int p =0; p < toBe.length; p++){
+                    toBe[p][k]=state[p][k+(j*4)];
+                }
+            }
         
-        //main Rounds
-        for(int i = rounds-1; i > 0; i--){
+            //Intial Rounds
+            addRoundKey(exKey, rounds);
+
+            //main Rounds
+            for(int i = rounds-1; i > 0; i--){
+                shiftRows(encrypt);
+                subBytes(encrypt);
+                addRoundKey(exKey, i);
+                mixColumns(encrypt);
+            }
+
+            //Final Rounds
             shiftRows(encrypt);
             subBytes(encrypt);
-            addRoundKey(exKey, i);
-            mixColumns(encrypt);
+            addRoundKey(exKey, 0);
+            
+            //puts the encrypted toBe back into state
+            for(int k = 0; k < toBe[0].length; k++){
+                for(int p =0; p < toBe.length; p++){
+                    state[p][k+(j*4)]=toBe[p][k];
+                }
+            }
         }
-        
-        //Final Rounds
-        shiftRows(encrypt);
-        subBytes(encrypt);
-        addRoundKey(exKey, 0);
+        System.out.println("After Decrpytion"); //Will be reomved
+        System.out.println(convert2DAryToString(state)); //Will be reomved
     }
     
+    
+    
+    
     private int[][] keyExpand(String key){
-        int round = 0;
+        int roundCount = 0;
         int keySize = key.length();
         int subKeySize = keySize/4;
         int[] keyhex = new int[key.length()];
-        int[][] roundKey = new int[44][4];
-        //convert key to ascii # the to hex
+        int[][] roundKey = new int[4][rounds * 4 + 4];
+        
+        //convert key to ascii
         for(int i = 0; i < key.length(); i++){
             char temp = key.charAt(i);
             keyhex[i] = temp; 
         }
-        System.out.println();
-        while(round < 44){
-        if(round < subKeySize){
-            //k(round + 4);
-            roundKey[round][0] = keyhex[round*4];
-            roundKey[round][1] = keyhex[round*4+1];
-            roundKey[round][2] = keyhex[round*4+2];
-            roundKey[round][3] = keyhex[round*4+3];            
-        } else{
-            if(subKeySize < 8){
-                if(round % subKeySize == 0){
-                    
-                    int[] tempAry = new int[4];
-                    for(int i = 0; i < 4; i++)
-                        tempAry[i] = roundKey[(round-1)][i];
-                    tempAry = rotWord(tempAry);
-                    tempAry = subWord(tempAry);
-                    int[] tempRcon = rcon((round/subKeySize)-1);
-                    for(int i = 0; i < 4; i++)
-                        tempAry[i] = tempAry[i] ^ tempRcon[i];
-                    for(int i = 0; i < 4; i++)
-                        tempAry[i] = tempAry[i] ^ roundKey[(round-4)][i];
-                    for(int i = 0; i < 4; i++)
-                        roundKey[round][i] = tempAry[i];
-                } else{
-                    for(int i = 0; i < 4; i++)
-                        roundKey[round][i] = roundKey[(round-1)][i] ^ roundKey[(round-subKeySize)][i];
-                }     
-            } else{ //32byte keysize
-                if(round % 4 == 0 && round/4 % 2 ==0){
-                    int[] tempAry = new int[4];
-                    for(int i = 0; i < 4; i++)
-                        tempAry[i] = roundKey[(round-1)][i];
-                    tempAry = rotWord(tempAry);
-                    tempAry = subWord(tempAry);
-                    int[] tempRcon = rcon((round/subKeySize)-1);
-                    for(int i = 0; i < 4; i++)
-                        tempAry[i] = tempAry[i] ^ tempRcon[i];
-                    for(int i = 0; i < 4; i++)
-                        tempAry[i] = tempAry[i] ^ roundKey[(round-subKeySize)*4][i];
-                    for(int i = 0; i < 4; i++)
-                        roundKey[round][i] = tempAry[i];
-                } else if(round % 4 == 0 && round / 4 % 2 != 0){
-                    int[] tempAry = new int[4];
-                    for(int i = 0; i < 4; i++)
-                        tempAry[i] = roundKey[(round-1)][i] ^ roundKey[(round-subKeySize)][i];
-                    tempAry= subWord(tempAry);
-                    for(int i = 0; i < 4; i++)
-                        roundKey[round][i] = tempAry[i];
-                } else
-                    for(int i = 0; i < 4; i++)
-                        roundKey[round][i] = roundKey[(round-1)][i] ^ roundKey[(round-subKeySize)][i];
+
+        while(roundCount < rounds * 4 + 4){
+            if(roundCount < subKeySize){ //copies the key to the first part of the round key
+                roundKey[0][roundCount] = keyhex[roundCount*4];
+                roundKey[1][roundCount] = keyhex[roundCount*4+1];
+                roundKey[2][roundCount] = keyhex[roundCount*4+2];
+                roundKey[3][roundCount] = keyhex[roundCount*4+3];            
+            } else{
+                if(subKeySize < 8){
+                    if(roundCount % subKeySize == 0){
+                        int[] tempAry = new int[4];
+                        for(int i = 0; i < 4; i++)
+                            tempAry[i] = roundKey[i][roundCount-1];
+                        tempAry = rotWord(tempAry);
+                        tempAry = subWord(tempAry);
+                        int[] tempRcon = rcon((roundCount/subKeySize)-1);
+                        for(int i = 0; i < 4; i++)
+                            tempAry[i] = tempAry[i] ^ tempRcon[i];
+                        for(int i = 0; i < 4; i++)
+                            tempAry[i] = tempAry[i] ^ roundKey[i][roundCount-4];
+                        for(int i = 0; i < 4; i++)
+                            roundKey[i][roundCount] = tempAry[i];
+                    } else{
+                        for(int i = 0; i < 4; i++)
+                            roundKey[i][roundCount] = roundKey[i][roundCount-1] ^ roundKey[i][roundCount-subKeySize];
+                    }     
+                } else{ //32byte keysize
+                    if(roundCount % 4 == 0 && roundCount/4 % 2 ==0){
+                        int[] tempAry = new int[4];
+                        for(int i = 0; i < 4; i++)
+                            tempAry[i] = roundKey[i][roundCount-1];
+                        tempAry = rotWord(tempAry);
+                        tempAry = subWord(tempAry);
+                        int[] tempRcon = rcon((roundCount/subKeySize)-1);
+                        for(int i = 0; i < 4; i++)
+                            tempAry[i] = tempAry[i] ^ tempRcon[i];
+                        for(int i = 0; i < 4; i++)
+                            tempAry[i] = tempAry[i] ^ roundKey[i][(roundCount-subKeySize)*4];
+                        for(int i = 0; i < 4; i++)
+                            roundKey[i][roundCount] = tempAry[i];
+                    } else if(roundCount % 4 == 0 && roundCount / 4 % 2 != 0){
+                        int[] tempAry = new int[4];
+                        for(int i = 0; i < 4; i++)
+                            tempAry[i] = roundKey[i][roundCount-1] ^ roundKey[i][roundCount-subKeySize];
+                        tempAry= subWord(tempAry);
+                        for(int i = 0; i < 4; i++)
+                            roundKey[i][roundCount] = tempAry[i];
+                    } else
+                        for(int i = 0; i < 4; i++)
+                            roundKey[i][roundCount] = roundKey[i][roundCount-1] ^ roundKey[i][roundCount-subKeySize];
+                }
             }
-        }
-        round++;
+            roundCount++;
         }
         return roundKey; 
-    
     }
     
     //shift left
@@ -395,20 +427,20 @@ public class AES {
     
     private void addRoundKey(int[][] keyMatrix, int round){
         int[][] temp = new int[4][4];
-        for(int k = 0; k < temp.length; k++){
-            for(int z =0; z < temp[k].length; z++){
-                temp[z][k]=keyMatrix[k+(round*4)][z];
+        for(int k = 0; k < temp[0].length; k++){
+            for(int z =0; z < temp.length; z++){
+                temp[z][k]=keyMatrix[z][k+(round*4)];
             }
         }  
-        for(int i = 0; i < toBe.length; i++)
-            for(int j =0; j < toBe[0].length; j++){
+        for(int i = 0; i < toBe[0].length; i++)
+            for(int j =0; j < toBe.length; j++){
                 toBe[j][i] = toBe[j][i] ^ temp[j][i];
             }
     }
     
     private void subBytes(boolean encrpyt){
-        for (int i = 0; i < toBe.length; i++) {
-            for (int j = 0; j < toBe[0].length; j++) {
+        for (int i = 0; i < toBe[0].length; i++) {
+            for (int j = 0; j < toBe.length; j++) {
                 int hex = toBe[j][i];
                 if(encrpyt){
                     toBe[j][i] = sbox[hex / 16][hex % 16];
@@ -491,91 +523,131 @@ public class AES {
         }
     }
     
+    private String addPadding(String inputStr){
+        if(inputStr.length() % 16 != 0){
+            StringBuilder sb = new StringBuilder();
+            for(int i = 0; i < 16- inputStr.length() % 16; i++)
+                sb.append(" ");
+            inputStr=inputStr.concat(sb.toString());
+        }
+        return inputStr;
+    }
     
+    private int[][] textToAsciiArray(String inputStr){
+        int[][] texthex = new int[4][inputStr.length()/4];
+        int count = 0;
+        for(int i = 0; i < inputStr.length()/4; i++){ //loop through columns
+            for(int j =0; j < 4; j++){ //loop through rows
+                char temp = inputStr.charAt(count);
+                texthex[j][i] = temp; 
+                count++;
+            }
+        } 
+        return texthex;
+    }
+    
+    //rows before columns
+    private int[][] covert1DAryTo2DAry(int[] ary){
+        int[][] array = new int[4][ary.length/4];
+        int counter = 0;
+        for(int i = 0; i < ary.length/4; i++){ //loop through columns
+            array[0][i] = ary[counter];
+            counter++;
+            array[1][i] = ary[counter];
+            counter++;
+            array[2][i] = ary[counter];
+            counter++;
+            array[3][i] = ary[counter];
+            counter++;
+        }
+        return array;
+    }
+    
+    //rows before columns
+    private int[] covert2DAryTo1DAry(int[][] ary){
+        int[] array = new int[ary.length * ary[0].length];
+        int counter = 0;
+        for(int i = 0; i < ary[0].length; i++) //loop through columns
+            for(int j = 0; j< ary.length; j++){ //loop through rows
+                array[counter] = ary[j][i];
+                counter++;
+            }
+        return array;
+    }
 
-    public String convert2DAryToString(int[][] ary){
+    private String convert2DAryToString(int[][] ary){
         StringBuilder sb = new StringBuilder();
-        for(int i =0; i <ary.length; i++){
-            for(int j = 0; j < ary[0].length; j++){
-                int first = ary[i][j]/16;
-            int second = ary[i][j]%16;
-            String fir;
-            String sec;
-            switch (first){
-                case 0: fir = "0";
-                    break;
-                case 1: fir = "1";
-                    break;  
-                case 2: fir = "2";
-                    break;
-                case 3: fir = "3";
-                    break;   
-                case 4: fir = "4";
-                    break;
-                case 5: fir = "5";
-                    break;  
-                case 6: fir = "6";
-                    break;
-                case 7: fir = "7";
-                    break; 
-                case 8: fir = "8";
-                    break;
-                case 9: fir = "9";
-                    break;  
-                case 10: fir = "A";
-                    break;
-                case 11: fir = "B";
-                    break;   
-                case 12: fir = "C";
-                    break;
-                case 13: fir = "D";
-                    break;  
-                case 14: fir = "E";
-                    break;
-                case 15: fir = "F";
-                    break;
-                default: fir="";
-            }
-            switch (second){
-                case 0: sec = "0";
-                    break;
-                case 1: sec = "1";
-                    break;  
-                case 2: sec = "2";
-                    break;
-                case 3: sec = "3";
-                    break;   
-                case 4: sec = "4";
-                    break;
-                case 5: sec = "5";
-                    break;  
-                case 6: sec = "6";
-                    break;
-                case 7: sec = "7";
-                    break; 
-                case 8: sec = "8";
-                    break;
-                case 9: sec = "9";
-                    break;  
-                case 10: sec = "A";
-                    break;
-                case 11: sec = "B";
-                    break;   
-                case 12: sec = "C";
-                    break;
-                case 13: sec = "D";
-                    break;  
-                case 14: sec = "E";
-                    break;
-                case 15: sec = "F";
-                    break;
-                default: sec="";
-            }
-            sb.append(fir);
-            sb.append(sec);
-            sb.append(" ");
+        for(int i =0; i <ary[0].length; i++){
+            for(int j = 0; j < ary.length; j++){
+                int first = ary[j][i]/16;
+                int second = ary[j][i]%16;
+                sb.append(convertNumToHex(first));
+                sb.append(convertNumToHex(second));
+                sb.append(" ");
             }
         }
         return sb.toString();
+    }
+     
+    private String convertNumToHex(int num){
+        String str;
+        switch (num){
+                case 0: str = "0";
+                    break;
+                case 1: str = "1";
+                    break;  
+                case 2: str = "2";
+                    break;
+                case 3: str = "3";
+                    break;   
+                case 4: str = "4";
+                    break;
+                case 5: str = "5";
+                    break;  
+                case 6: str = "6";
+                    break;
+                case 7: str = "7";
+                    break; 
+                case 8: str = "8";
+                    break;
+                case 9: str = "9";
+                    break;  
+                case 10: str = "A";
+                    break;
+                case 11: str = "B";
+                    break;   
+                case 12: str = "C";
+                    break;
+                case 13: str = "D";
+                    break;  
+                case 14: str = "E";
+                    break;
+                case 15: str = "F";
+                    break;
+                default: str="";
+            }
+        return str;
+    }
+    
+    private String convertStateToString(){
+        StringBuilder sb = new StringBuilder();
+        for(int k = 0; k < state[0].length; k++){
+            for(int z =0; z < state.length; z++){
+                char temp;
+                temp=(char)state[z][k];
+                sb.append(temp);
+            }
+        }
+        return sb.toString();
+    }
+    
+    
+    //Get Statement - Only things that can be access from outside the class
+    public String getEncryptedString(){
+        return encrptedAndBase64;
+    }
+    
+    public String getDecryptedString(){
+        return decrptedStr;
     }
 }
